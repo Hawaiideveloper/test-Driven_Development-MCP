@@ -7,10 +7,6 @@
 # Docker
 .docker/
 
-# Kubernetes secrets
-*-secret.yaml
-secrets/
-
 # IDE and editor files
 .vscode/settings.json
 .idea/

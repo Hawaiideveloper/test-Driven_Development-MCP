@@ -1,8 +1,8 @@
 ### TDD-MCP Health Check
-GET http://172.100.10.107:30234/health
+GET http://localhost:63777/health
 
 ### Introduce Repository
-POST http://172.100.10.107:30234/introduce
+POST http://localhost:63777/introduce
 Content-Type: application/json
 
 {
@@ -10,7 +10,7 @@ Content-Type: application/json
 }
 
 ### Ensure Checklist (Python project example)
-POST http://172.100.10.107:30234/ensure-checklist
+POST http://localhost:63777/ensure-checklist
 Content-Type: application/json
 
 {
@@ -20,7 +20,7 @@ Content-Type: application/json
 }
 
 ### Start TDD Workflow
-POST http://172.100.10.107:30234/tdd/start
+POST http://localhost:63777/tdd/start
 Content-Type: application/json
 
 {
