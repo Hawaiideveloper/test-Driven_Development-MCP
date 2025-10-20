@@ -1,0 +1,29 @@
+### TDD-MCP Health Check
+GET http://172.100.10.107:30234/health
+
+### Introduce Repository
+POST http://172.100.10.107:30234/introduce
+Content-Type: application/json
+
+{
+  "repoPath": "/Users/hawaiidevelopergmail.com/Documents/github/test-driven-development-mcp"
+}
+
+### Ensure Checklist (Python project example)
+POST http://172.100.10.107:30234/ensure-checklist
+Content-Type: application/json
+
+{
+  "repoPath": "/Users/hawaiidevelopergmail.com/Documents/github/test-driven-development-mcp",
+  "language": "python",
+  "dryRun": false
+}
+
+### Start TDD Workflow
+POST http://172.100.10.107:30234/tdd/start
+Content-Type: application/json
+
+{
+  "repoPath": "/Users/hawaiidevelopergmail.com/Documents/github/test-driven-development-mcp",
+  "language": "python"
+}

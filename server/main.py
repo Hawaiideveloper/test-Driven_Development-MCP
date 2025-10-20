@@ -19,28 +19,29 @@ app = FastAPI(
 
 This server discovers or generates repository checklists and kicks off bootstrap/tests for Test-Driven Development workflows.
 
-### 🔗 Quick Kubernetes Connection
+### 🔗 Quick Local Docker Connection
 
-To connect to this service running in Kubernetes:
+To connect to this service running locally via Docker:
 
 ```bash
-# Get connection script from repository
+# Option 1: Use start-mcp.sh script (recommended)
 git clone https://github.com/Hawaiideveloper/test-Driven_Development-MCP.git
 cd test-Driven_Development-MCP
+LANGUAGE=python ./start-mcp.sh /path/to/your/repo
 
-# Run connection utility
-./connect-k8-mcp-to-local.sh
+# Option 2: Run Docker directly
+docker run -d -p 63777:63777 -v "$(pwd):/work" --name TDD-MCP ghcr.io/hawaiideveloper/tdd-mcp:latest
 
-# Or connect directly to NodePort
-curl http://<NODE_IP>:30234/health
-curl -X POST http://<NODE_IP>:30234/introduce -H "Content-Type: application/json" -d '{"repoPath": "/work"}'
+# Connect to server
+curl http://localhost:63777/health
+curl -X POST http://localhost:63777/introduce -H "Content-Type: application/json" -d '{"repoPath": "/work"}'
 ```
 
 ### 📋 Key Features
 - **Checklist Discovery**: Finds existing `.mcp/*.yaml` checklists or generates from README.md
 - **TDD Workflow**: Bootstraps dependencies and runs tests
 - **Multi-Language**: Supports Python, Node.js, Go, Rust, Java, C++
-- **Kubernetes Ready**: Deployed with Helm, accessible via NodePort 30234
+- **Local Docker**: Direct filesystem access to your repository
 
 ### 🛠️ Getting Started
 1. Use `/introduce` to explore repository structure
@@ -509,10 +510,10 @@ def root():
         "version": app.version,
         "repository": "https://github.com/Hawaiideveloper/test-Driven_Development-MCP",
         "documentation": "/docs",
-        "kubernetes": {
-            "nodePort": 30234,
-            "internalPort": 63777,
-            "connectionScript": "./connect-k8-mcp-to-local.sh"
+        "localDocker": {
+            "port": 63777,
+            "startScript": "./start-mcp.sh",
+            "helperScript": "./tdd-helper.sh"
         },
         "quickStart": {
             "health": "GET /health",

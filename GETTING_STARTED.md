@@ -1,48 +1,88 @@
 # Getting Started
 
-This guide shows how to run the MCP server locally in Docker or connect to a Kubernetes deployment, and quickly bootstrap a checklist so an agent can begin TDD work.
+> **🎯 Local Development Focus**: TDD-MCP runs lo## API Endpoints
+
+**Base URL:** `http://localhost:63777`
+
+- `GET /health` - Health check
+- `GET /version` - Server version
+- `GET /docs` - Interactive API documentation (Swagger UI)
+- `POST /introduce` - Introduce repository to server
+  - Body: `{ "repoPath": "/work" }`
+- `POST /ensure-checklist` - Generate or verify checklist
+  - Body: `{ "repoPath": "/work", "dryRun": false, "language": "python|node|go|rust|java|cpp" }`
+- `POST /tdd/start` - Begin TDD workflow
+  - Body: `{ "repoPath": "/work", "language": "python|node|go|rust|java|cpp" }`
+
+**Quick Test:**
+```bash
+curl http://localhost:63777/health
+curl http://localhost:63777/version
+```a Docker with your repository mounted as a volume. This ensures the server has direct filesystem access to read and write your files - no remote deployment complexity needed.
+
+This guide shows how to run the MCP server locally in Docker and quickly bootstrap a checklist so you can begin TDD work.
 
 ## 🚀 Quick Start Options
 
-### Option 1: Kubernetes (Recommended)
+### Option 1: Local Docker (Recommended)
 
-If you have the service deployed in Kubernetes:
+**Simplest way to get started:**
 
 ```bash
-# Clone repository for connection utilities
+# Clone TDD-MCP repository
 git clone https://github.com/Hawaiideveloper/test-Driven_Development-MCP.git
 cd test-Driven_Development-MCP
 
-# Use the connection script
-./connect-k8-mcp-to-local.sh
+# Start server for this repository
+LANGUAGE=python ./start-mcp.sh .
 
-# Or connect directly to NodePort
-curl http://<NODE_IP>:30234/health
-curl -X POST http://<NODE_IP>:30234/introduce \
-  -H "Content-Type: application/json" \
-  -d '{"repoPath": "/work"}'
+# Or for any other repository
+LANGUAGE=python ./start-mcp.sh /path/to/your/project
 ```
 
-The Kubernetes deployment:
-- Runs on NodePort `30234` (maps to internal port `63777`)
-- Uses private GHCR image with secure image pull secrets
-- Accessible from any cluster node IP
-- Full documentation at `http://<NODE_IP>:30234/docs`
+**What happens automatically:**
+- 🐳 Builds and runs Docker container on `http://localhost:63777`
+- 📁 Mounts your repository at `/work` inside container
+- � Server introduces itself to your repository
+- � Creates checklist (if needed) or starts TDD workflow
+- ✅ Server has full read/write access to your files
 
-### Option 2: Local Docker
+**Why local Docker?**
+- Direct filesystem access - no remote complexity
+- Isolated environment - no dependency conflicts
+- Reproducible builds - same behavior everywhere
+- Simple cleanup - just stop the container
 
-From your repo root:
+### Option 2: Quick Repository Helper
+
+For instant TDD setup in any repository:
 
 ```bash
-LANGUAGE=python ./start-mcp.sh .
+# One-liner setup
+curl -sSL https://raw.githubusercontent.com/Hawaiideveloper/test-Driven_Development-MCP/main/tdd-helper.sh -o tdd-helper.sh && chmod +x tdd-helper.sh && ./tdd-helper.sh
 ```
 
-What this does:
-- Builds and runs a local Docker container for the FastAPI server on `http://localhost:63777`
-- Mounts your repo into the container at `/work`
-- Introduces itself and either creates a checklist or starts the TDD bootstrap/tests
+**What the helper script does:**
+- 🔍 Auto-detects existing TDD-MCP Docker containers
+- � Introduces your repository to TDD-MCP
+- 🎯 Detects project language automatically
+- 📋 Generates `CHECKLIST.md` and `.mcp/checklist.yaml`
+- ⚙️ Saves configuration in `.tdd-mcp-config`
 
-If you omit the argument, it defaults to your current directory.
+### Option 3: Manual Docker Run
+
+Run TDD-MCP directly with Docker commands:
+
+```bash
+# From your repository directory
+docker run -d -p 63777:63777 \
+  -v "$(pwd):/work" \
+  --name TDD-MCP \
+  ghcr.io/hawaiideveloper/tdd-mcp:latest
+
+# Server is now available at http://localhost:63777
+curl http://localhost:63777/health
+```
 
 ## Endpoints
 
@@ -53,12 +93,89 @@ If you omit the argument, it defaults to your current directory.
 
 Use any HTTP client or your editor’s HTTP tools.
 
-## Connect from common tools
+## Using TDD-MCP from Your Editor
 
 ### VS Code
-- Run `./start-mcp.sh` to start the server
-- Use the built-in REST client extensions (e.g., REST Client) or Thunder Client to hit `http://localhost:8000`
-- You can create `.http` files with requests to `/introduce`, `/ensure-checklist`, and `/tdd/start`
+
+**Three ways to interact with TDD-MCP (no extensions required):**
+
+1. **Integrated Terminal** (simplest):
+   ```bash
+   # From VS Code terminal
+   curl http://localhost:63777/health
+   curl -X POST http://localhost:63777/introduce \
+     -H "Content-Type: application/json" \
+     -d '{"repoPath": "/work"}'
+   ```
+
+2. **REST Client Extension** (optional):
+   - Install REST Client extension (if desired)
+   - Create `.http` file with requests:
+   ```http
+   ### Health Check
+   GET http://localhost:63777/health
+   
+   ### Introduce Repository
+   POST http://localhost:63777/introduce
+   Content-Type: application/json
+   
+   {
+     "repoPath": "/work"
+   }
+   ```
+
+3. **Tasks Configuration**:
+   - Add to `.vscode/tasks.json`:
+   ```json
+   {
+     "version": "2.0.0",
+     "tasks": [
+       {
+         "label": "TDD-MCP: Introduce",
+         "type": "shell",
+         "command": "curl -X POST http://localhost:63777/introduce -H 'Content-Type: application/json' -d '{\"repoPath\": \"/work\"}'"
+       }
+     ]
+   }
+   ```
+
+### Cursor
+
+- Start server: `LANGUAGE=python ./start-mcp.sh .`
+- Use integrated terminal for curl commands
+- Access API documentation at `http://localhost:63777/docs`
+
+### Claude Desktop
+
+Configure Claude Desktop to use TDD-MCP:
+
+1. Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
+2. Add TDD-MCP configuration:
+```json
+{
+  "mcpServers": {
+    "tdd-mcp": {
+      "command": "curl",
+      "args": [
+        "-X", "POST",
+        "http://localhost:63777/mcp",
+        "-H", "Content-Type: application/json",
+        "-d", "@-"
+      ]
+    }
+  }
+}
+```
+
+### Any HTTP Client
+
+TDD-MCP works with any HTTP client:
+- **curl** - Command line (always available)
+- **httpie** - Modern command line HTTP client
+- **Postman** - GUI HTTP client
+- **Insomnia** - REST client
+- **Thunder Client** - VS Code extension
+- **Swagger UI** - Built-in at `http://localhost:63777/docs`
 
 ### Cursor
 - Start the server with `LANGUAGE=python ./start-mcp.sh`
@@ -74,27 +191,195 @@ Use any HTTP client or your editor’s HTTP tools.
 - Any HTTP client (curl/httpie/Postman) can interact with the API
 - Ensure Docker Desktop is running
 
-## Script reference
+## ✨ Zero-Dependency VS Code Configuration
 
-The quick-start script `start-mcp.sh`:
-- Builds the Docker image
-- Launches the container and exposes port 63777
-- Calls `/introduce` then either `/ensure-checklist` or `/tdd/start`
+**The `configure-vscode-tdd-mcp.sh` script provides pure configuration with NO external dependencies:**
 
-Usage:
+### What it does automatically (zero dependencies):
+1. **🔍 Auto-Detection**: Finds TDD-MCP (Kubernetes or local)
+2. **⚙️  Settings Update**: Stores connection info in `settings.json` (pure JSON)
+3. **📄 Test File Creation**: Creates `tdd-mcp-test.http` with sample API calls
+4. **🔄 VS Code Reload**: Auto-reloads VS Code (convenience feature)
+5. **✅ Ready State**: Configured and ready - no extensions required!
 
+### Usage:
 ```bash
-chmod +x start-mcp.sh
-LANGUAGE=python ./start-mcp.sh /absolute/or/relative/path/to/repo
+# Zero-dependency configuration (one command)
+./configure-vscode-tdd-mcp.sh
+
+# What you'll see:
+╔════════════════════════════════════════════════════╗
+║       VS Code TDD-MCP Auto-Configuration           ║
+║    🚀 Zero Dependencies - Just Configuration!      ║
+╚════════════════════════════════════════════════════╝
+
+✅ What was completed (zero external dependencies):
+  ✓ VS Code settings.json updated with connection info
+  ✓ TDD-MCP endpoints stored for easy reference
+  ✓ Test HTTP file created (tdd-mcp-test.http)
+  ✓ VS Code reloaded with new settings
+  ✓ No external extensions required!
 ```
 
-If your repo already contains `.mcp/*.yaml`, the server will skip generation and begin the TDD bootstrap/tests.
+### How to use after configuration:
+
+**Three ways to interact with TDD-MCP:**
+
+1. **`.http` files** (if you have REST Client extension):
+   - Open `tdd-mcp-test.http`
+   - Click "Send Request" above each API call
+   
+2. **Terminal curl commands** (always available):
+   ```bash
+   curl http://172.100.10.107:30234/health
+   curl -X POST http://172.100.10.107:30234/introduce \
+     -H "Content-Type: application/json" \
+     -d '{"repoPath": "/path/to/repo"}'
+   ```
+
+3. **Any HTTP client** (your choice):
+   - Postman, Insomnia, Thunder Client, etc.
+   - Connection info stored in VS Code settings for reference
+
+## Script Reference
+
+### start-mcp.sh
+
+The main script for launching TDD-MCP locally:
+
+```bash
+# Basic usage
+LANGUAGE=python ./start-mcp.sh /path/to/repo
+
+# Interactive (prompts for language)
+./start-mcp.sh /path/to/repo
+
+# Current directory
+LANGUAGE=python ./start-mcp.sh .
+```
+
+**What it does:**
+1. Builds Docker image (if needed)
+2. Launches container on port 63777
+3. Mounts your repository at `/work`
+4. Calls `/introduce` to detect repository structure
+5. Calls `/ensure-checklist` or `/tdd/start` based on existing checklists
+
+**Supported Languages:**
+- `python` - Python projects
+- `node` - Node.js/JavaScript projects
+- `go` - Go projects
+- `rust` - Rust projects
+- `java` - Java projects
+- `cpp` - C++ projects
+
+### tdd-helper.sh
+
+Quick setup script for any repository:
+
+```bash
+# Download and run
+curl -sSL https://raw.githubusercontent.com/Hawaiideveloper/test-Driven_Development-MCP/main/tdd-helper.sh -o tdd-helper.sh
+chmod +x tdd-helper.sh
+./tdd-helper.sh
+
+# With options
+./tdd-helper.sh --reset  # Reconfigure from scratch
+./tdd-helper.sh --help   # Show help
+```
 
 ## Troubleshooting
 
-- Ensure Docker Desktop is running and port 63777 is free
-- If dependencies are large, first run may take a while
-- Use `docker logs tdd-mcp -f` to view server logs
-- Rebuild image after code changes: `docker build -t tdd-mcp:local .`
+### Docker Issues
+
+**Container won't start:**
+```bash
+# Check if Docker Desktop is running
+docker version
+
+# Check if port 63777 is in use
+lsof -i :63777
+
+# Stop existing container
+docker stop TDD-MCP && docker rm TDD-MCP
+```
+
+**Server not responding:**
+```bash
+# View container logs
+docker logs TDD-MCP -f
+
+# Check container status
+docker ps -a | grep TDD-MCP
+
+# Restart container
+docker restart TDD-MCP
+```
+
+### Build Issues
+
+**Image build fails:**
+```bash
+# Clean rebuild
+docker build --no-cache -t tdd-mcp:local .
+
+# Check Docker disk space
+docker system df
+
+# Clean up old images
+docker system prune -a
+```
+
+### Repository Access Issues
+
+**Server can't access files:**
+- Ensure repository path is absolute, not relative
+- Check Docker file sharing settings (Docker Desktop → Settings → Resources → File Sharing)
+- Verify the repository is in an allowed path
+
+**Permission errors:**
+```bash
+# On Linux/macOS, ensure files are readable
+chmod -R 755 /path/to/repo
+
+# Check mount point inside container
+docker exec TDD-MCP ls -la /work
+```
+
+### Common Solutions
+
+**Port already in use:**
+```bash
+# Use different port
+docker run -d -p 8080:63777 -v "$(pwd):/work" --name TDD-MCP ghcr.io/hawaiideveloper/tdd-mcp:latest
+
+# Update base URL in requests
+curl http://localhost:8080/health
+```
+
+**Slow performance:**
+- First run may be slow due to dependency installation
+- Subsequent runs use Docker layer caching
+- Large repositories may take longer to analyze
+
+**Can't connect from host:**
+```bash
+# Verify container is running
+docker ps | grep TDD-MCP
+
+# Test connectivity
+curl -v http://localhost:63777/health
+
+# Check container network
+docker inspect TDD-MCP | grep -A 5 "NetworkSettings"
+```
+
+### Getting Help
+
+1. Check logs: `docker logs TDD-MCP -f`
+2. View API docs: `http://localhost:63777/docs`
+3. Test health endpoint: `curl http://localhost:63777/health`
+4. Rebuild image: `docker build -t tdd-mcp:local .`
+5. Open GitHub issue with logs and error messages
 
 

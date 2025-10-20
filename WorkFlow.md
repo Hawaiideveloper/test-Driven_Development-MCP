@@ -2,10 +2,15 @@
 
 This document describes the intended workflow and how the MCP orchestrates tasks using TDD.
 
+## Local Development Context
+
+TDD-MCP runs locally via Docker with your repository mounted as a volume at `/work`. This ensures the server has direct filesystem access to read and write your files without the complexity of remote deployments.
+
 ## Steps
 
 1. Run script
    - Execute `start-mcp.sh` with optional `LANGUAGE` env.
+   - Docker container starts with your repository mounted at `/work`.
 2. Discover README.md
    - If the repo has a `README.md`, the server reads it to infer the job.
    - If not present, a minimal `README.md` can be generated in future iterations.
