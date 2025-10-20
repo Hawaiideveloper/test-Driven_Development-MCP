@@ -1,8 +1,35 @@
 # Getting Started
 
-This guide shows how to run the MCP server locally in Docker, connect via FastAPI, and quickly bootstrap a checklist so an agent can begin TDD work.
+This guide shows how to run the MCP server locally in Docker or connect to a Kubernetes deployment, and quickly bootstrap a checklist so an agent can begin TDD work.
 
-## Quick start (one command)
+## 🚀 Quick Start Options
+
+### Option 1: Kubernetes (Recommended)
+
+If you have the service deployed in Kubernetes:
+
+```bash
+# Clone repository for connection utilities
+git clone https://github.com/Hawaiideveloper/test-Driven_Development-MCP.git
+cd test-Driven_Development-MCP
+
+# Use the connection script
+./connect-k8-mcp-to-local.sh
+
+# Or connect directly to NodePort
+curl http://<NODE_IP>:30234/health
+curl -X POST http://<NODE_IP>:30234/introduce \
+  -H "Content-Type: application/json" \
+  -d '{"repoPath": "/work"}'
+```
+
+The Kubernetes deployment:
+- Runs on NodePort `30234` (maps to internal port `63777`)
+- Uses private GHCR image with secure image pull secrets
+- Accessible from any cluster node IP
+- Full documentation at `http://<NODE_IP>:30234/docs`
+
+### Option 2: Local Docker
 
 From your repo root:
 

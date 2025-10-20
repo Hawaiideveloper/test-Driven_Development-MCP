@@ -9,7 +9,48 @@ import shutil
 from pathlib import Path
 
 
-app = FastAPI(title="TDD MCP Server", version="0.1.0")
+app = FastAPI(
+    title="TDD MCP Server",
+    version="0.1.0",
+    description="""
+## 🚀 TDD-focused MCP Server
+
+**Repository:** [github.com/Hawaiideveloper/test-Driven_Development-MCP](https://github.com/Hawaiideveloper/test-Driven_Development-MCP)
+
+This server discovers or generates repository checklists and kicks off bootstrap/tests for Test-Driven Development workflows.
+
+### 🔗 Quick Kubernetes Connection
+
+To connect to this service running in Kubernetes:
+
+```bash
+# Get connection script from repository
+git clone https://github.com/Hawaiideveloper/test-Driven_Development-MCP.git
+cd test-Driven_Development-MCP
+
+# Run connection utility
+./connect-k8-mcp-to-local.sh
+
+# Or connect directly to NodePort
+curl http://<NODE_IP>:30234/health
+curl -X POST http://<NODE_IP>:30234/introduce -H "Content-Type: application/json" -d '{"repoPath": "/work"}'
+```
+
+### 📋 Key Features
+- **Checklist Discovery**: Finds existing `.mcp/*.yaml` checklists or generates from README.md
+- **TDD Workflow**: Bootstraps dependencies and runs tests
+- **Multi-Language**: Supports Python, Node.js, Go, Rust, Java, C++
+- **Kubernetes Ready**: Deployed with Helm, accessible via NodePort 30234
+
+### 🛠️ Getting Started
+1. Use `/introduce` to explore repository structure
+2. Use `/ensure-checklist` to create/find checklists  
+3. Use `/tdd/start` to begin TDD workflow
+4. Use `/scaffold` to generate task files from checklist
+    """,
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 
 class RepoRequest(BaseModel):
@@ -459,6 +500,27 @@ def bootstrap_and_test(repo_root: Path, language: Optional[str]) -> dict:
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/")
+def root():
+    return {
+        "service": "TDD MCP Server",
+        "version": app.version,
+        "repository": "https://github.com/Hawaiideveloper/test-Driven_Development-MCP",
+        "documentation": "/docs",
+        "kubernetes": {
+            "nodePort": 30234,
+            "internalPort": 63777,
+            "connectionScript": "./connect-k8-mcp-to-local.sh"
+        },
+        "quickStart": {
+            "health": "GET /health",
+            "introduce": "POST /introduce",
+            "ensureChecklist": "POST /ensure-checklist", 
+            "startTDD": "POST /tdd/start"
+        }
+    }
 
 
 @app.get("/version")
