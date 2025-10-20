@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: tdd-mcp-repo
+Version: 0.1.0
+Summary: Local repo package for TDD MCP demos
+Requires-Python: >=3.10

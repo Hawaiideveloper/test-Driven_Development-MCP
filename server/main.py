@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import os
 import subprocess
 import yaml
@@ -16,6 +16,19 @@ class RepoRequest(BaseModel):
     repoPath: str
     dryRun: Optional[bool] = False
     language: Optional[str] = None  # e.g., python, node, go, rust, java, cpp
+
+
+class MarkRequest(BaseModel):
+    repoPath: str
+    taskId: str
+    checked: bool
+
+
+class TestRequest(BaseModel):
+    repoPath: str
+    language: Optional[str] = None
+    path: Optional[str] = None  # pytest path/nodeid
+    k: Optional[str] = None     # pytest -k expression
 
 
 def file_exists(path_str: str) -> bool:
@@ -167,6 +180,198 @@ def ensure_checklist(repo_root: Path, dry_run: bool = False, language: Optional[
     return {"created": True, "path": str(out_path), "dryRun": False}
 
 
+def load_checklist(repo_root: Path) -> Optional[Dict[str, Any]]:
+    files = find_checklists(repo_root)
+    if not files:
+        return None
+    # Prefer checklist.yaml
+    preferred = None
+    for p in files:
+        if p.name == "checklist.yaml":
+            preferred = p
+            break
+    path = preferred or files[0]
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    except Exception:
+        return None
+
+
+def write_checklist_md(repo_root: Path, checklist: Dict[str, Any]) -> Path:
+    tasks = checklist.get("tasks", [])
+    lines: List[str] = []
+    lines.append("# CHECKLIST")
+    meta = checklist.get("metadata", {})
+    if meta:
+        name = meta.get("name")
+        desc = meta.get("description")
+        if name:
+            lines.append("")
+            lines.append(f"Project: {name}")
+        if desc:
+            lines.append("")
+            lines.append(desc)
+    lines.append("")
+    lines.append("## Tasks")
+    for t in tasks:
+        tid = t.get("id", "task")
+        title = t.get("title", tid)
+        description = t.get("description", "")
+        lines.append(f"- [ ] {title} ({tid})")
+        if description:
+            lines.append(f"  - {description}")
+        steps = t.get("steps", [])
+        if isinstance(steps, list) and steps:
+            lines.append("  - Steps:")
+            for s in steps:
+                # Render generic summary for each step
+                if isinstance(s, dict):
+                    if "run" in s:
+                        lines.append(f"    - run: `{s['run']}`")
+                    elif "read" in s:
+                        lines.append(f"    - read: `{s['read']}`")
+                    elif "parse" in s:
+                        lines.append(f"    - parse: `{s['parse']}`")
+                    else:
+                        lines.append("    - step")
+                else:
+                    lines.append("    - step")
+    content = "\n".join(lines) + "\n"
+    out_path = repo_root / "CHECKLIST.md"
+    out_path.write_text(content, encoding="utf-8")
+    return out_path
+
+
+def regenerate_checklist(repo_root: Path, language: Optional[str]) -> Dict[str, Any]:
+    readme = read_file_text(repo_root / "README.md")
+    desc = extract_mcp_job_section(readme)
+    yaml_text = generate_checklist_yaml(repo_root.name, desc, language)
+    out_dir = repo_root / ".mcp"
+    out_path = out_dir / "checklist.yaml"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(yaml_text, encoding="utf-8")
+    return {"path": str(out_path)}
+
+
+def sanitize_symbol(name: str) -> str:
+    out = []
+    for ch in name:
+        if ch.isalnum() or ch == "_":
+            out.append(ch)
+        elif ch in "- ":
+            out.append("_")
+        # else drop other chars
+    sym = "".join(out)
+    if sym and sym[0].isdigit():
+        sym = f"task_{sym}"
+    return sym or "task"
+
+
+def scaffold_from_checklist(repo_root: Path) -> Dict[str, Any]:
+    checklist = load_checklist(repo_root)
+    if not checklist:
+        return {"ok": False, "error": "No checklist loaded"}
+    # Always write CHECKLIST.md
+    md_path = write_checklist_md(repo_root, checklist)
+    tasks = checklist.get("tasks", [])
+    tasks_dir = repo_root / "src" / "tasks"
+    tasks_dir.mkdir(parents=True, exist_ok=True)
+    # ensure package init for tasks
+    (tasks_dir / "__init__.py").write_text("", encoding="utf-8")
+
+    created_files: List[str] = [str(md_path)]
+    call_entries: List[str] = []
+    call_lines: List[str] = []
+    for t in tasks:
+      tid = t.get("id", "task")
+      title = t.get("title", tid)
+      func_name = f"run_{sanitize_symbol(tid)}"
+      file_name = f"{sanitize_symbol(tid)}.py"
+      file_path = tasks_dir / file_name
+      if not file_path.exists():
+          file_content = (
+              f"\"\"\"\nTask: {title}\nID: {tid}\nThis function should implement the checklist item logic.\n\"\"\"\n"
+              f"def {func_name}() -> None:\n"
+              f"    \"\"\"Entry point for task '{tid}'.\n"
+              f"    Implement the logic and add tests under tests/.\n"
+              f"    \"\"\"\n"
+              f"    pass\n"
+          )
+          file_path.write_text(file_content, encoding="utf-8")
+          created_files.append(str(file_path))
+      # Master call entry with comment referencing file location
+      call_entries.append(
+          f"# Task {tid} implementation at src/tasks/{file_name}\nfrom tasks.{sanitize_symbol(tid)} import {func_name}"
+      )
+      call_lines.append(f"    # calls src/tasks/{file_name}")
+      call_lines.append(f"    {func_name}()")
+
+    # Create master file
+    master_path = repo_root / "src" / "master.py"
+    imports_block = "\n".join(call_entries)
+    calls_block = "\n".join(call_lines)
+    master_content = (
+        f"# Master entrypoint that calls each task function in order.\n"
+        f"{imports_block}\n\n"
+        f"def run_all_tasks() -> None:\n"
+        f"    \"\"\"Run all checklist tasks sequentially.\n"
+        f"    Each call is preceded by a comment indicating the source file path.\n"
+        f"    \"\"\"\n"
+        f"{calls_block if calls_block else '    pass'}\n"
+    )
+    master_path.parent.mkdir(parents=True, exist_ok=True)
+    master_path.write_text(master_content, encoding="utf-8")
+    created_files.append(str(master_path))
+
+    return {"ok": True, "created": created_files, "checklist_md": str(md_path)}
+
+
+def mark_checklist_item(repo_root: Path, task_id: str, checked: bool) -> Dict[str, Any]:
+    md_path = repo_root / "CHECKLIST.md"
+    if not md_path.exists():
+        return {"ok": False, "error": "CHECKLIST.md not found"}
+    content = md_path.read_text(encoding="utf-8").splitlines()
+    needle = f"({task_id})"
+    updated = []
+    changed = False
+    for line in content:
+        if line.strip().startswith("- [") and needle in line:
+            if checked:
+                newline = line.replace("- [ ]", "- [x]")
+            else:
+                newline = line.replace("- [x]", "- [ ]")
+            if newline != line:
+                changed = True
+            updated.append(newline)
+        else:
+            updated.append(line)
+    if changed:
+        md_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+    return {"ok": True, "changed": changed, "path": str(md_path)}
+
+
+def list_task_status(repo_root: Path) -> Dict[str, Any]:
+    checklist = load_checklist(repo_root) or {"tasks": []}
+    ids = [t.get("id", "") for t in checklist.get("tasks", [])]
+    tasks_dir = repo_root / "src" / "tasks"
+    files = []
+    if tasks_dir.exists():
+        for p in tasks_dir.glob("*.py"):
+            files.append(p.name)
+    master = repo_root / "src" / "master.py"
+    master_content = master.read_text(encoding="utf-8") if master.exists() else ""
+    items = []
+    for tid in ids:
+        sym = sanitize_symbol(tid)
+        file_name = f"{sym}.py"
+        present = file_name in files
+        imported = f"from tasks.{sym} import run_{sym}" in master_content
+        called = f"run_{sym}()" in master_content
+        items.append({"id": tid, "file": file_name, "present": present, "imported": imported, "called": called})
+    return {"tasks": items, "masterExists": master.exists()}
+
+
 def run_cmd(cmd: List[str], cwd: Path) -> dict:
     try:
         completed = subprocess.run(
@@ -256,6 +461,11 @@ def health():
     return {"ok": True}
 
 
+@app.get("/version")
+def version():
+    return {"name": "TDD MCP Server", "version": app.version}
+
+
 @app.post("/introduce")
 def introduce(req: RepoRequest):
     repo = Path(req.repoPath).resolve()
@@ -267,6 +477,25 @@ def introduce(req: RepoRequest):
         "hasChecklist": len(found) > 0,
         "instructions": "Use /ensure-checklist to create one if missing, or /tdd/start to begin.",
     }
+
+
+@app.post("/checklist")
+def get_checklist(req: RepoRequest):
+    repo = Path(req.repoPath).resolve()
+    data = load_checklist(repo)
+    md_path = repo / "CHECKLIST.md"
+    md_exists = md_path.exists()
+    md_preview = md_path.read_text(encoding="utf-8")[:2000] if md_exists else None
+    return {"yaml": data, "checklistMdPath": str(md_path), "checklistMdExists": md_exists, "checklistMdPreview": md_preview}
+
+
+@app.post("/checklist/refresh")
+def refresh_checklist(req: RepoRequest):
+    repo = Path(req.repoPath).resolve()
+    regen = regenerate_checklist(repo, req.language)
+    data = load_checklist(repo) or {"tasks": []}
+    md = write_checklist_md(repo, data)
+    return {"yamlPath": regen["path"], "checklistMd": str(md)}
 
 
 @app.post("/ensure-checklist")
@@ -281,5 +510,51 @@ def tdd_start(req: RepoRequest):
     repo = Path(req.repoPath).resolve()
     lang = (req.language or None)
     return bootstrap_and_test(repo, lang)
+
+
+@app.post("/scaffold")
+def scaffold(req: RepoRequest):
+    repo = Path(req.repoPath).resolve()
+    return scaffold_from_checklist(repo)
+
+
+@app.post("/checklist/mark")
+def checklist_mark(req: MarkRequest):
+    repo = Path(req.repoPath).resolve()
+    return mark_checklist_item(repo, req.taskId, req.checked)
+
+
+@app.post("/tasks/status")
+def tasks_status(req: RepoRequest):
+    repo = Path(req.repoPath).resolve()
+    return list_task_status(repo)
+
+
+@app.post("/tests/run")
+def tests_run(req: TestRequest):
+    repo = Path(req.repoPath).resolve()
+    # base bootstrap
+    bootstrap = bootstrap_and_test(repo, req.language)
+    # focused run if provided
+    if req.path or req.k:
+        args: List[str] = ["pytest", "-q"]
+        if req.k:
+            args += ["-k", req.k]
+        if req.path:
+            args += [req.path]
+        focused = run_cmd(args, repo)
+        bootstrap["focused"] = focused
+    return bootstrap
+
+
+@app.post("/orchestrate/run")
+def orchestrate_run(req: RepoRequest):
+    repo = Path(req.repoPath).resolve()
+    cmd = [
+        "python",
+        "-c",
+        "from src.master import run_all_tasks; run_all_tasks()",
+    ]
+    return run_cmd(cmd, repo)
 
 

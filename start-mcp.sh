@@ -9,6 +9,49 @@ IMAGE_TAG="tdd-mcp:local"
 CONTAINER_NAME="TDD-MCP"
 PORT="63777"
 LANGUAGE_INPUT="${LANGUAGE:-}"
+OPEN_EDITOR="${OPEN_EDITOR:-auto}" # auto|cursor|code|none
+
+open_url() {
+  url="$1"
+  if command -v open >/dev/null 2>&1; then
+    open "$url" || true
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$url" || true
+  else
+    printf "Open this URL in your browser: %s\n" "$url"
+  fi
+}
+
+open_editor() {
+  repo="$1"
+  choice="$2"
+  case "$choice" in
+    cursor)
+      if command -v cursor >/dev/null 2>&1; then
+        cursor -r "$repo" || open -a "Cursor" "$repo" || true
+        return
+      fi
+      ;;
+    code)
+      if command -v code >/dev/null 2>&1; then
+        code -r "$repo" || open -a "Visual Studio Code" "$repo" || true
+        return
+      fi
+      ;;
+    none)
+      return
+      ;;
+  esac
+  # auto-detect
+  if command -v cursor >/dev/null 2>&1; then
+    cursor -r "$repo" || open -a "Cursor" "$repo" || true
+    return
+  fi
+  if command -v code >/dev/null 2>&1; then
+    code -r "$repo" || open -a "Visual Studio Code" "$repo" || true
+    return
+  fi
+}
 
 echo "[start-mcp] Building Docker image ${IMAGE_TAG}..."
 docker build -t "${IMAGE_TAG}" .
@@ -68,5 +111,9 @@ Next steps:
 - Use /introduce, /ensure-checklist, and /tdd/start endpoints as needed
 
 MSG
+
+# Auto-open API docs and editor for convenience
+open_url "http://localhost:${PORT}/docs"
+open_editor "${REPO_PATH}" "${OPEN_EDITOR}"
 
 
