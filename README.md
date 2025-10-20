@@ -93,12 +93,12 @@ For a fuller walkthrough and editor-specific tips (VS Code, Cursor, Claude), see
 ```mermaid
 flowchart TD
     A[Run start-mcp.sh] --> B{Checklist exists?}
-    B -- No --> C[Generate .mcp/checklist.yaml]
+    B -->|No| C[Generate .mcp/checklist.yaml]
     C --> D[Scaffold CHECKLIST.md and src/tasks/*]
-    B -- Yes --> D
+    B -->|Yes| D
     D --> E[Create/Update src/master.py]
     E --> F[Bootstrap deps]
-    F --> G[Run tests (TDD)]
+    F --> G[Run tests TDD]
     G -->|fail| H[Fix code / tests]
     H --> F
     G -->|pass| I[Mark checkbox in CHECKLIST.md]
