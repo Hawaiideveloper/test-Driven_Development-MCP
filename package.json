@@ -1,0 +1,15 @@
+{
+  "name": "test-driven-development-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP checklist discovery and generator CLI",
+  "bin": {
+    "mcp-checklist": "bin/mcp-checklist.js"
+  },
+  "scripts": {
+    "start": "node bin/mcp-checklist.js",
+    "checklist:dry-run": "node bin/mcp-checklist.js --dry-run",
+    "checklist:repo": "node bin/mcp-checklist.js --repo ."
+  }
+}
+

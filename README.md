@@ -1,34 +1,74 @@
-The object of this repo is to look at checklists and to complete those checklists using a test driven development approach.
+# test-Driven_Development-MCP
 
-Say, I create a new repo, and I create a master checklist and that list is 1000 items long.  I should be able to give that list to the AI the AI continuously test and implement a main entry point into multiple modules for each item on the checklist by doing so this enables both humans and the AI to troubleshoot patch and update individual files that are then called in the main entry point program instead of having a massive file with millions of lines of code.
+Local TDD-focused MCP server that discovers or generates repo checklists and kicks off bootstrap/tests.
 
+## Table of Contents
+- [Overview](#overview)
+- [Quick Start (Docker)](#quick-start-docker)
+- [Language Selection](#language-selection)
+- [Endpoints](#endpoints)
+- [Optional: CLI Checklist Tool](#optional-cli-checklist-tool)
+- [See also: GETTING_STARTED.md](#see-also-getting_startedmd)
 
-This is useful because when you combine it with this prompt, it should be able to complete the list and if there's an issue quickly identify it and keep testing it until it passes
+## Overview
+This server can:
+- Detect `.mcp/*.yaml` checklists in a repo, or generate one from `README.md` if missing
+- Run dependency bootstrap and tests to support a TDD workflow
 
+Acceptance criteria:
+- A checklist exists under `.mcp/checklist.yaml` or is generated when missing
+- Actions and generation can be dry-run before writing
 
-```text
-All projects must have an env file and a template env file.  It is required that all variables be parameterized there so that adjustments can be made
-Ensure that we have a dependency file that allows new users to start using one command so that the system runs on the first go
-We need to use Docker so that we can test with clean instances after each run.
+## Quick Start (Docker)
 
-If a run fails the testing stops, the adjustment is made, the patch is applied and it re-runs the module.
-It is preferred to use a virtual env within the docker so that things can be installed quickly using a dependency file and in some cases but not all we may need to skip a test due to a missing module which we will come back to 
-1) Write a focused unit test that fails (one test per item).
-2) Implement the feature in a dedicated module/file and expose it via the MCP “master” entrypoint (FastAPI/MCP server/webserver) or whatever the endpoint the user is asking for in the checklist.
-3) Run the full test suite; fix until green.
-4) Check off the item in MASTER_CHECKLIST.md.
-5) Proceed to the next item and repeat.
-* Structure:
-* One file per function/feature (modular), plus a master file that imports and wires them (e.g., FastAPI endpoints and MCP tool registry).
-* Keep tests atomic and fast; use offline fixtures for external pages (status/docs/OpenAPI).
-* Quality gates every step:
-* After checking a new box, re-run all prior tests to ensure no regressions.
-Nothing is done unless our test coverage equals 100% so do not stop testing and implementating until we reach 100% coverage and nothing is left unchecked.
-* Gate network calls (status, [program name here) behind preflight checks; use degraded mode when needed.
-* Enforce idempotency, rate limiting, and backoff where applicable.
-* Completion rule:
-* An item is “done” only when its unit test(s) pass and the feature is callable through the master entrypoint (CLI/HTTP/MCP) etc.
-* Continue until 100% of checklist items are checked and the full test suite passes.
-After all tests are complete, a helm chart must be created so that the final product can be deployed as a microservice or api into a kubernetes cluster
+Port: `63777` (chosen to avoid common conflicts). Container name: `TDD-MCP`.
+
+From the repo root:
+
+```bash
+LANGUAGE=python ./start-mcp.sh .
 ```
 
+This will:
+- Build and run the container at `http://localhost:63777`
+- Mount your repo at `/work`
+- Introduce the server, then either create a checklist or start the TDD bootstrap/tests
+
+## Language Selection
+- The server accepts a default language and includes it in generated checklists as `metadata.default_language` (e.g., `python`, `node`, `go`, `rust`, `java`, `cpp`).
+- The start script prompts for a language if `LANGUAGE` env var is not set.
+- Example non-interactive run:
+
+```bash
+LANGUAGE=python ./start-mcp.sh /path/to/repo
+```
+
+## Endpoints
+Base URL: `http://localhost:63777`
+
+- `GET /health`
+- `POST /introduce`
+  - Body: `{ "repoPath": "/work" }`
+- `POST /ensure-checklist`
+  - Body: `{ "repoPath": "/work", "dryRun": false, "language": "python|node|go|rust|java|cpp" }`
+- `POST /tdd/start`
+  - Body: `{ "repoPath": "/work", "language": "python|node|go|rust|java|cpp" }`
+
+## Optional: CLI Checklist Tool
+You can also manage checklists via a small Node CLI (useful outside the server):
+
+```bash
+node bin/mcp-checklist.js --repo . --dry-run
+node bin/mcp-checklist.js --repo .
+```
+
+Or with env var:
+
+```bash
+MCP_REPO_PATH=$(pwd) node bin/mcp-checklist.js --dry-run
+```
+
+When embedded in an MCP server, the CLI can be invoked at startup with the target repo path; if no checklist files are found, it will generate `.mcp/checklist.yaml` based on the README and exit successfully.
+
+## See also: GETTING_STARTED.md
+For a fuller walkthrough and editor-specific tips (VS Code, Cursor, Claude), see `GETTING_STARTED.md`.

@@ -1,0 +1,67 @@
+version: 1
+metadata:
+  name: Repo Automation Checklist (Starter)
+  description: Tasks for the MCP agent to perform in this repository
+  owner: your-team-or-handle
+  default_branch: main
+
+permissions:
+  allow_shell: true
+  allow_git: true
+  allow_file_edits: true
+  shell_whitelist:
+    - npm
+    - pnpm
+    - yarn
+    - pytest
+    - go
+    - make
+  edit_path_allowlist:
+    - src/**
+    - tests/**
+    - README.md
+    - package.json
+    - pyproject.toml
+
+tasks:
+  - id: bootstrap-deps
+    title: Install dependencies
+    description: Ensure dependencies are installed for the project language
+    steps:
+      - when: file_exists("package.json")
+        run: npm ci
+      - when: file_exists("pyproject.toml")
+        run: pip install -U pip && pip install -e .
+      - when: file_exists("requirements.txt")
+        run: pip install -U pip && pip install -r requirements.txt
+      - when: file_exists("go.mod")
+        run: go mod download
+    success_criteria:
+      - No non-zero exit codes from install steps
+
+  - id: run-tests
+    title: Run test suite
+    description: Execute tests to validate current state
+    steps:
+      - when: file_exists("package.json")
+        run: npm test --silent
+      - when: file_exists("pyproject.toml") or file_exists("pytest.ini")
+        run: pytest -q
+      - when: file_exists("go.mod")
+        run: go test ./...
+    success_criteria:
+      - All tests pass (zero failures)
+      - Process exit code == 0
+
+  - id: job-from-readme
+    title: Execute the primary job described in README
+    description: The README should have a section with job instructions or a pointer to scripts
+    steps:
+      - read: README.md
+      - parse: mcp_section("MCP Job")
+      - run: echo "Executing job steps..."
+    success_criteria:
+      - Marked completion condition in README achieved
+      - Exit code == 0
+
+
