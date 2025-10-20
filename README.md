@@ -2,6 +2,22 @@
 
 Local TDD-focused MCP server that discovers or generates repo checklists and kicks off bootstrap/tests.
 
+## Workflow Diagram
+
+```mermaid
+flowchart TD
+    A[Run start-mcp.sh] --> B{Checklist exists?}
+    B -->|No| C[Generate .mcp/checklist.yaml]
+    C --> D[Scaffold CHECKLIST.md and src/tasks/*]
+    B -->|Yes| D
+    D --> E[Create/Update src/master.py]
+    E --> F[Bootstrap deps]
+    F --> G[Run tests TDD]
+    G -->|fail| H[Fix code / tests]
+    H --> F
+    G -->|pass| I[Mark checkbox in CHECKLIST.md]
+```
+
 ## Table of Contents
 - [Overview](#overview)
 - [Quick Start (Docker)](#quick-start-docker)
@@ -10,7 +26,6 @@ Local TDD-focused MCP server that discovers or generates repo checklists and kic
 - [Modular Functions and Master Orchestration](#modular-functions-and-master-orchestration)
 - [Optional: CLI Checklist Tool](#optional-cli-checklist-tool)
 - [See also: GETTING_STARTED.md](#see-also-getting_startedmd)
- - [Diagram](#diagram)
 
 ## Overview
 This server can:
@@ -87,19 +102,3 @@ When embedded in an MCP server, the CLI can be invoked at startup with the targe
 
 ## See also: GETTING_STARTED.md
 For a fuller walkthrough and editor-specific tips (VS Code, Cursor, Claude), see `GETTING_STARTED.md`.
-
-## Diagram
-
-```mermaid
-flowchart TD
-    A[Run start-mcp.sh] --> B{Checklist exists?}
-    B -->|No| C[Generate .mcp/checklist.yaml]
-    C --> D[Scaffold CHECKLIST.md and src/tasks/*]
-    B -->|Yes| D
-    D --> E[Create/Update src/master.py]
-    E --> F[Bootstrap deps]
-    F --> G[Run tests TDD]
-    G -->|fail| H[Fix code / tests]
-    H --> F
-    G -->|pass| I[Mark checkbox in CHECKLIST.md]
-```
