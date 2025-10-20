@@ -1,0 +1,76 @@
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Docker
+.docker/
+
+# Kubernetes secrets
+*-secret.yaml
+secrets/
+
+# IDE and editor files
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Personal tokens and credentials (never commit these)
+github-token.txt
+*.pem
+*.key
+*.crt
+config.json
+credentials.json
+
+# Claude settings (may contain local preferences)
+.claude/settings.local.json

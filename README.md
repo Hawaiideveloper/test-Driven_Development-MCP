@@ -61,8 +61,24 @@ This will:
 LANGUAGE=python ./start-mcp.sh /path/to/repo
 ```
 
+## Kubernetes Deployment
+
+Deploy to Kubernetes using Helm:
+
+```bash
+# Deploy with private GHCR image
+helm upgrade --install tdd-mcp ./helm/tdd-mcp \
+  --namespace test-driven-development \
+  --create-namespace \
+  --set 'imagePullSecrets[0].name=ghcr-secret'
+```
+
+Access via NodePort (external access):
+- NodePort: `30234` maps to internal port `63777`
+- Base URL: `http://<NODE_IP>:30234`
+
 ## Endpoints
-Base URL: `http://localhost:63777`
+Base URL: `http://localhost:63777` (Docker) or `http://<NODE_IP>:30234` (Kubernetes)
 
 - `GET /health`
 - `POST /introduce`
