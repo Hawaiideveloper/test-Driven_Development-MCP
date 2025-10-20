@@ -59,9 +59,71 @@ build_image() {
     print_message "$GREEN" "✓ Docker image built successfully"
 }
 
-# Push image to GHCR
-push_to_ghcr() {
+# Check if image exists in GHCR and handle accordingly
+check_and_manage_image() {
+    print_message "$BLUE" "\n� Checking image availability..."
+
+    # First, login to GHCR if token is available
+    if [ -n "$GITHUB_PERSONAL_ACCESS_TOKEN" ]; then
+        print_message "$YELLOW" "Logging into GHCR using GITHUB_PERSONAL_ACCESS_TOKEN..."
+        echo "$GITHUB_PERSONAL_ACCESS_TOKEN" | docker login ghcr.io -u ${GITHUB_USER} --password-stdin
+    elif [ -n "$GITHUB_TOKEN" ]; then
+        print_message "$YELLOW" "Logging into GHCR using GITHUB_TOKEN..."
+        echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${GITHUB_USER} --password-stdin
+    else
+        print_message "$YELLOW" "No GitHub token found for GHCR access"
+    fi
+
+    # Try to pull the image from GHCR
+    print_message "$YELLOW" "Checking if ${GHCR_IMAGE}:${IMAGE_TAG} exists in GHCR..."
+    if docker pull ${GHCR_IMAGE}:${IMAGE_TAG} 2>/dev/null; then
+        print_message "$GREEN" "✓ Image found in GHCR, using existing image"
+        return 0
+    else
+        print_message "$YELLOW" "⚠️  Image not found in GHCR or pull failed"
+        
+        # Check if we have a local image
+        if docker images ${IMAGE_NAME}:${IMAGE_TAG} | grep -q ${IMAGE_TAG}; then
+            print_message "$YELLOW" "Found local image ${IMAGE_NAME}:${IMAGE_TAG}"
+            
+            # Ask user if they want to push
+            echo ""
+            read -p "$(echo -e "${YELLOW}Would you like to push the local image to GHCR? (y/N): ${NC}")" -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                push_image_to_ghcr
+            else
+                print_message "$YELLOW" "Using local image for deployment"
+                # Tag the local image as GHCR image for Kubernetes to use
+                docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${GHCR_IMAGE}:${IMAGE_TAG}
+            fi
+        else
+            print_message "$YELLOW" "No local image found, building first..."
+            build_image
+            echo ""
+            read -p "$(echo -e "${YELLOW}Would you like to push the newly built image to GHCR? (y/N): ${NC}")" -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                push_image_to_ghcr
+            else
+                print_message "$YELLOW" "Using local image for deployment"
+                docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${GHCR_IMAGE}:${IMAGE_TAG}
+            fi
+        fi
+    fi
+}
+
+# Push image to GHCR (separate function for reuse)
+push_image_to_ghcr() {
     print_message "$BLUE" "\n🚀 Pushing to GitHub Container Registry..."
+
+    # Check authentication
+    if [ -z "$GITHUB_PERSONAL_ACCESS_TOKEN" ] && [ -z "$GITHUB_TOKEN" ]; then
+        print_message "$RED" "No GitHub token found. Please set GITHUB_TOKEN or GITHUB_PERSONAL_ACCESS_TOKEN"
+        print_message "$YELLOW" "Or login manually:"
+        print_message "$YELLOW" "  echo \$GITHUB_TOKEN | docker login ghcr.io -u ${GITHUB_USER} --password-stdin"
+        return 1
+    fi
 
     # Tag for GHCR
     docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${GHCR_IMAGE}:${IMAGE_TAG}
@@ -73,13 +135,10 @@ push_to_ghcr() {
         print_message "$GREEN" "✓ Images pushed to GHCR successfully"
         print_message "$GREEN" "  - ${GHCR_IMAGE}:${IMAGE_TAG}"
         print_message "$GREEN" "  - ${GHCR_IMAGE}:latest"
+        return 0
     else
         print_message "$RED" "✗ Failed to push to GHCR"
-        print_message "$YELLOW" "You may need to login to GHCR first:"
-        print_message "$YELLOW" "  docker login ghcr.io -u ${GITHUB_USER}"
-        print_message "$YELLOW" "Or set GITHUB_TOKEN and run:"
-        print_message "$YELLOW" "  echo \$GITHUB_TOKEN | docker login ghcr.io -u ${GITHUB_USER} --password-stdin"
-        exit 1
+        return 1
     fi
 }
 
@@ -87,16 +146,39 @@ push_to_ghcr() {
 deploy_helm() {
     print_message "$BLUE" "\n🚀 Deploying with Helm..."
 
+    # Create imagePullSecret if GitHub token is available
+    HELM_ARGS=""
+    if [ -n "$GITHUB_PERSONAL_ACCESS_TOKEN" ] || [ -n "$GITHUB_TOKEN" ]; then
+        print_message "$YELLOW" "Creating GHCR image pull secret..."
+        TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN:-$GITHUB_TOKEN}
+        
+        # Create namespace if it doesn't exist
+        kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f - || true
+        
+        kubectl create secret docker-registry ghcr-secret \
+            --docker-server=ghcr.io \
+            --docker-username=${GITHUB_USER} \
+            --docker-password="$TOKEN" \
+            --docker-email=${GITHUB_USER}@gmail.com \
+            -n ${NAMESPACE} \
+            --dry-run=client -o yaml | kubectl apply -f - || true
+        HELM_ARGS="--set imagePullSecrets[0].name=ghcr-secret"
+        print_message "$GREEN" "✓ Image pull secret configured"
+    else
+        print_message "$YELLOW" "No GitHub token found, deploying without imagePullSecrets"
+    fi
+
     # Check if release already exists
     if helm list -n ${NAMESPACE} | grep -q ${RELEASE_NAME}; then
         print_message "$YELLOW" "Release '${RELEASE_NAME}' already exists. Upgrading..."
         helm upgrade ${RELEASE_NAME} ${CHART_PATH} \
             --namespace ${NAMESPACE} \
             --create-namespace \
+            ${HELM_ARGS} \
             --wait \
             --timeout 5m 2>&1 || {
             print_message "$RED" "⚠ Helm upgrade failed (likely NodePort range issue)"
-            print_message "$YELLOW" "This is expected if NodePort 63777 is outside your cluster's range (30000-32767)"
+            print_message "$YELLOW" "This is expected if NodePort is outside cluster's range (30000-32767)"
             print_message "$YELLOW" "The deployment will continue, but you'll need to use port-forwarding"
             return 0
         }
@@ -106,10 +188,11 @@ deploy_helm() {
         helm install ${RELEASE_NAME} ${CHART_PATH} \
             --namespace ${NAMESPACE} \
             --create-namespace \
+            ${HELM_ARGS} \
             --wait \
             --timeout 5m 2>&1 || {
             print_message "$RED" "⚠ Helm install failed (likely NodePort range issue)"
-            print_message "$YELLOW" "This is expected if NodePort 63777 is outside your cluster's range (30000-32767)"
+            print_message "$YELLOW" "This is expected if NodePort is outside cluster's range (30000-32767)"
             print_message "$YELLOW" "The deployment will continue, but you'll need to use port-forwarding"
             return 0
         }
@@ -175,9 +258,8 @@ main() {
     check_kubectl
     check_docker
 
-    # Build and push image
-    build_image
-    push_to_ghcr
+    # Check and manage Docker image (pull from GHCR or build/push if needed)
+    check_and_manage_image
 
     # Deploy
     deploy_helm
